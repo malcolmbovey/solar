@@ -119,7 +119,7 @@ with st.sidebar:
             key="offpeak_rate", on_change=_save_settings,
         )
         fit_rate = st.number_input(
-            "Feed-in", step=0.01, format="%.3f",
+            "Export", step=0.01, format="%.3f",
             key="fit_rate", on_change=_save_settings,
         )
 
@@ -152,7 +152,7 @@ with st.sidebar:
         key="grid_charge_kw", on_change=_save_settings,
     )
     grid_charge_target_pct = st.slider(
-        "Grid charge target (%)", min_value=50, max_value=100,
+        "Battery overnight charge %", min_value=0, max_value=100,
         disabled=not allow_grid_charge,
         help="How full to charge the battery from the grid overnight. "
              "The remaining headroom is left for solar the next morning.",
