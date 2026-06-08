@@ -60,7 +60,8 @@ def simulate(
     shoulder_rate: float,
     fit_rate: float,
     initial_soc_pct: float = 50.0,
-) -> dict:
+    return_detail: bool = False,
+) -> dict | tuple[dict, pd.DataFrame]:
     dt = df.attrs["interval_h"]
     min_soc = min_soc_pct / 100 * total_kwh
     soc = initial_soc_pct / 100 * total_kwh
@@ -73,12 +74,13 @@ def simulate(
     peak_mask = _build_period_mask(hours, minutes, peak_ranges)
     offpeak_mask = _build_period_mask(hours, minutes, offpeak_ranges)
 
-    # Per-interval import rate array
     rates = np.where(peak_mask, peak_rate,
              np.where(offpeak_mask, offpeak_rate, shoulder_rate))
 
     grid_import_arr = np.zeros(len(df))
     grid_export_arr = np.zeros(len(df))
+    battery_discharge_arr = np.zeros(len(df))
+    soc_arr = np.zeros(len(df))
 
     for i in range(len(df)):
         net = solar[i] - load[i]
@@ -92,6 +94,7 @@ def simulate(
             discharge = min(deficit, max(0.0, soc - min_soc))
             soc -= discharge
             grid_import_arr[i] = deficit - discharge
+            battery_discharge_arr[i] = discharge
 
         # Off-peak grid top-up — only charge up to the target SoC, leaving
         # the remaining headroom for solar the next morning.
@@ -101,6 +104,8 @@ def simulate(
                 gc = min(grid_charge_kw * dt, target - soc)
                 soc += gc
                 grid_import_arr[i] += gc
+
+        soc_arr[i] = soc
 
     total_load = load.sum()
     total_solar = solar.sum()
@@ -112,7 +117,7 @@ def simulate(
     self_suff = (total_load - total_import) / total_load * 100 if total_load > 0 else 0.0
     self_cons = (total_solar - total_export) / total_solar * 100 if total_solar > 0 else 0.0
 
-    return {
+    summary = {
         "battery_kwh": total_kwh,
         "grid_import_kwh": round(total_import, 1),
         "grid_export_kwh": round(total_export, 1),
@@ -122,6 +127,20 @@ def simulate(
         "export_revenue": round(export_revenue, 2),
         "net_cost": round(import_cost - export_revenue, 2),
     }
+
+    if return_detail:
+        detail = pd.DataFrame({
+            "timestamp": df["timestamp"].values,
+            "solar_kwh": solar,
+            "load_kwh": load,
+            "grid_import_kwh": grid_import_arr,
+            "grid_export_kwh": grid_export_arr,
+            "battery_discharge_kwh": battery_discharge_arr,
+            "battery_soc_kwh": soc_arr,
+        })
+        return summary, detail
+
+    return summary
 
 
 def run_scenarios(df: pd.DataFrame, sizes: list[float], **kwargs) -> pd.DataFrame:
